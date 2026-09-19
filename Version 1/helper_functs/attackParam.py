@@ -2,6 +2,7 @@
 
 import socket
 import random
+import sys
 from math import ceil
 
 class attackParam:
@@ -14,6 +15,34 @@ class attackParam:
         self.fragSize=fragSize
         self.allFragms=allFragms
 
+def ipFormCheck(ipAdrr):
+    ipOctets=ipAdrr.split(".")
+
+    ipOctetsLen=len(ipOctets)
+    if (ipOctetsLen==4):
+        for i in range(ipOctetsLen):
+            octet=ipOctets[i]
+
+            isoctetInt=octet.isdigit()
+            if (isoctetInt==True):
+                octetInt=int(octet)
+            else:
+                isIpValid=False
+                break
+
+            if (octetInt>=0)and(octetInt<=255): 
+                if (i==(ipOctetsLen-1)):
+                    isIpValid=True
+                continue
+            else:
+                isIpValid=False
+                break  
+    else:
+        isIpValid=False
+
+    return isIpValid
+
+
 def attackParamGen(srcIP, dstIP):
     
     #Extract the Source and Destination IP addresses:
@@ -21,7 +50,19 @@ def attackParamGen(srcIP, dstIP):
     destIPAddr=dstIP
 
     #Check if IP address have correct form:
-    #Later!
+    isSrcIpValid=ipFormCheck(srcIP)
+    isDestIpValid=ipFormCheck(dstIP)
+
+    if (isSrcIpValid==False)or(isDestIpValid==False):
+        if (isSrcIpValid==False)and(isDestIpValid==False):
+            print("Error: Both Source and Destination IP addresses have the wrong form. Please enter them and try again!") 
+        elif (isSrcIpValid==False):
+           print("Error: Source IP address has the wrong form. Please enter it and try again!") 
+        else:
+            print("Error: Destination IP address has the wrong form. Please enter it and try again!")
+
+        sys.exit(1) 
+
 
     #Generate a random Identification Field for the IP packet:
     IDField=random.randint(0, 65535)
@@ -86,9 +127,3 @@ def attackParamGen(srcIP, dstIP):
 
     # Return all needed parameters as a class for easy access later in main attacker code:
     return attackParam(srcIPAddr,destIPAddr,IDField,TTL,protoField,fragSize,allFragms)
-
-
-
-
-
-
