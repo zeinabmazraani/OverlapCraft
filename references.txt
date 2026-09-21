@@ -1,4 +1,0 @@
-[1] https://www.brainkart.com/article/RAW-Sockets_9125/
-[2] https://rstforums.com/forum/topic/105520-raw-socket-programming-in-python-linux/
-[3] https://oneuptime.com/blog/post/2026-03-20-raw-socket-python-ipv4/view
-[4] https://oneuptime.com/blog/post/2026-03-20-ipv4-packet-header-structure/view
