@@ -45,7 +45,6 @@ class OverlapDetectorV2:
         self.fragments_currently_stored = 0
         self.total_processing_time_ms = 0.0
         self.total_cpu_time_ms = 0.0
-        self.maximum_processing_time_ms = 0.0
         self.capture_start_time = time.perf_counter()
 
         #Line buffering writes each log entry without waiting for the file to be completely filled or closed.
@@ -138,9 +137,6 @@ class OverlapDetectorV2:
 
         self.total_processing_time_ms += processing_time_ms
         self.total_cpu_time_ms += cpu_time_ms
-
-        if processing_time_ms > self.maximum_processing_time_ms:
-            self.maximum_processing_time_ms = processing_time_ms
 
         self.log_file.write(
             f"PERFORMANCE "
@@ -413,7 +409,6 @@ class OverlapDetectorV2:
         print(f"Incomplete datagrams still stored: {len(self.fragment_table)}")
         print(f"Fragments currently stored: {self.fragments_currently_stored}")
         print(f"Average processing time: {average_processing_time_ms:.6f} ms")
-        print(f"Maximum processing time: {self.maximum_processing_time_ms:.6f} ms")
         print(f"Average CPU time: {average_cpu_time_ms:.6f} ms")
         print(f"Processing throughput: {fragments_per_second:.2f} fragments/second")
         print(f"Fragment log: {self.log_path}")
