@@ -126,4 +126,4 @@ def attackParamGen(srcIP, dstIP):
         })
 
     # Return all needed parameters as a class for easy access later in main attacker code:
-    return attackParam(srcIPAddr,destIPAddr,IDField,TTL,protoField,fragSize,allFragms)
+    return attackParam(srcIPAddr,destIPAddr,IDField,TTL,protoField,fragSize,allFragms),overlapInd

