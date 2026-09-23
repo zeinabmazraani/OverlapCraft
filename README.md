@@ -3,7 +3,6 @@
 ## Contribution*
 - **Attacker code**: developed by Tamer Slim
 - **Detector code**: developed by Zeinab Mazraani
-
 * Full contribution breakdown and more detail available in the report.
 
 ## Running the Simulations
