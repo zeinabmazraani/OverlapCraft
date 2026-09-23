@@ -1,7 +1,7 @@
 # OverlapCraft: Overlapping IP Fragmentation Attack and Detection
 
 ## Contribution
-- **Attacker code + debug **: developed by Tamer Slim
+- **Attacker code + debug**: developed by Tamer Slim
 - **Detector code + debug**: developed by Zeinab Mazraani
 
 (Full contribution breakdown and more detail available in the report)
