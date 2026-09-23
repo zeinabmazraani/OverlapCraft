@@ -1,0 +1,430 @@
+AI PROMPTS AND OUTPUTS FOR THE DETECTOR
+
+1. TURNING MY VERSION 1 PSEUDOCODE INTO PYTHON
+
+Prompt: "I'll give you pseudocode for Version 1 of the detector. Tell me the Python syntax and libraries I need." (not all pseudocode is included so that the file doesn't become too big)
+
+Output: Use Scapy to access the IPv4 header and a dictionary to store fragment information. Put the imports at the top of the file, initialize the dictionary in the detector's constructor, and put the checks from the pseudocode in process_packet().
+
+Start by rejecting packets without an IPv4 layer. Then read MF and the fragment offset. If both are zero, the packet is unfragmented and does not need an overlap comparison:
+
+    from scapy.all import IP
+
+    def process_packet(self, packet):
+        if IP not in packet:
+            return
+
+        ip = packet[IP]
+        mf = int(ip.flags.MF)
+        offset = int(ip.frag)
+
+        if mf == 0 and offset == 0:
+            return
+
+        # Continue with the key, byte range, and comparison.
+
+The offset is measured in units of eight bytes, so the fragment starts at offset * 8. The key should contain the source IP, destination IP, protocol, and IP ID. This is the point where the pseudocode becomes the structure of the Python function; the overlap comparison can be added after these checks.
+
+
+2. LOGGING EVERYTHING BUT PRINTING ONLY ALERTS
+
+Prompt: "How do I create a log file for the fragment information? I want everything in the file but only overlap alerts in the terminal."
+
+Output: One approach is to give the logger two destinations. Put its setup function above the detector class. The file destination records ordinary fragment activity and alerts; the terminal destination receives warnings only.
+
+    import logging
+
+    def create_logger():
+        logger = logging.getLogger("fragment_detector")
+        logger.setLevel(logging.INFO)
+
+        file_handler = logging.FileHandler("fragments.log", mode="a")
+        file_handler.setLevel(logging.INFO)
+
+        terminal_handler = logging.StreamHandler()
+        terminal_handler.setLevel(logging.WARNING)
+
+        logger.addHandler(file_handler)
+        logger.addHandler(terminal_handler)
+        return logger
+
+Create the logger once in the detector's constructor:
+
+    self.logger = create_logger()
+
+Inside process_packet(), record an ordinary fragment with self.logger.info(...). When an overlap is found, use self.logger.warning(...). A warning goes to both destinations; an informational record goes only to the file. If create_logger() might be called more than once in the same Python process, check for existing handlers before adding new ones, or the output may be duplicated.
+
+
+3. LOGGING WITHOUT THE LOGGING MODULE
+
+Prompt: "Can I do this without the logging module? I also want the date and time recorded."
+
+Output: Yes. Put a small write_log() method inside the detector class. Call it for every fragment, and call it with alert=True when an overlap occurs. The method writes both types of message to the file but prints only alerts.
+
+Put this import at the top of the file:
+
+    from datetime import datetime
+
+In the constructor, set the file path:
+
+    self.log_path = "fragments.log"
+
+Then add this method to the class:
+
+    def write_log(self, message, alert=False):
+        timestamp = datetime.now().astimezone().isoformat(timespec="seconds")
+        line = f"[{timestamp}] {message}"
+
+        with open(self.log_path, "a", encoding="utf-8") as log_file:
+            log_file.write(line + "\n")
+
+        if alert:
+            print(line)
+
+For example, call self.write_log(fragment_description) after calculating a fragment's range. If a comparison finds an overlap, call self.write_log(overlap_description, alert=True). Append mode keeps records from earlier runs, so write a "new run started" line when the detector starts. If you want a separate file for every run, include the start time in self.log_path instead.
+
+
+4. FALSE OVERLAP ALERTS
+
+Prompt: "I kept only the previous fragment in the table to avoid false positives from IP ID reuse. Why am I still getting false positives?"
+
+Output: Keeping one fragment per key reduces stored data, but that one entry can remain indefinitely. If a later datagram reuses the same source, destination, protocol, and IP ID, the detector may compare its new fragment with an old one. Expiring entries addresses that case.
+
+Check the byte-range calculation as well. If a short Ethernet frame has padding, counting all bytes exposed after the IP layer can make its fragment appear longer than the IPv4 header says it is. Calculate the fragment data length from the IPv4 header:
+
+    header_bytes = int(ip.ihl) * 4
+    payload_bytes = int(ip.len) - header_bytes
+
+    if payload_bytes < 0:
+        return  # Invalid IPv4 length
+
+    start_byte = int(ip.frag) * 8
+    end_byte = start_byte + payload_bytes
+
+Put this where process_packet() currently calculates start_byte and end_byte. For ranges whose end is exclusive, the overlap check is:
+
+    overlap_start = max(previous_start, start_byte)
+    overlap_end = min(previous_end, end_byte)
+
+    if overlap_start < overlap_end:
+        # Report the overlap.
+
+Log both fragments' keys, offsets, IPv4 lengths, and calculated ranges when debugging. That shows whether the cause is an old entry, a wrong length, or the comparison itself.
+
+
+5. WRITING MAIN() FOR VERSION 1
+
+Prompt: "How do I write main() so I can use a PCAP file first and real traffic later, with logs in fragments.log?"
+
+Output: Keep packet processing in the detector class. main() should only read the command-line choice, create the detector, and feed packets to process_packet(). The PCAP and live modes are two separate runs of the same detector.
+
+    import argparse
+    from scapy.all import PcapReader, sniff
+
+    def main():
+        parser = argparse.ArgumentParser()
+        source = parser.add_mutually_exclusive_group(required=True)
+        source.add_argument("--pcap", help="Read packets from a PCAP file")
+        source.add_argument("--interface", help="Capture packets from an interface")
+        args = parser.parse_args()
+
+        detector = OverlapDetectorV1()  # Use your actual class name.
+
+        if args.pcap:
+            with PcapReader(args.pcap) as packets:
+                for packet in packets:
+                    detector.process_packet(packet)
+        else:
+            sniff(
+                iface=args.interface,
+                prn=detector.process_packet,
+                store=False,
+            )
+
+        # Print your detector's counters here.
+
+    if __name__ == "__main__":
+        main()
+
+Put this below the detector class. Pass --pcap path/to/file.pcap for testing, or --interface NAME for live capture. PcapReader processes the file packet by packet, and store=False avoids keeping every live packet in Scapy's capture list. Use the same process_packet() method in both modes.
+
+
+6. GENERATING A TEST PCAP
+
+Prompt: "Generate a PCAP with a normal packet, consecutive overlaps, and nonconsecutive overlaps. Show the IP ID, addresses, protocol, offset, and start and end bytes."
+
+Output: Give the three cases different IP IDs so their fragments cannot be grouped together accidentally. The important arrival order for the third case is A, B, C: C overlaps A but is adjacent to B. A detector that checks only the previous fragment misses A/C.
+
+Save this as make_test_pcap.py and run it in the environment where Scapy is installed:
+
+    from scapy.all import Ether, IP, UDP, Raw, wrpcap
+
+    packets = []
+
+    # Case 1: ordinary, unfragmented UDP packet
+    packets.append(
+        Ether()
+        / IP(src="192.0.2.10", dst="192.0.2.20", id=1000)
+        / UDP(sport=12000, dport=9000)
+        / Raw(b"normal packet")
+    )
+
+    def add_fragment(src, dst, ip_id, udp_bytes, start, end, more):
+        packets.append(
+            Ether()
+            / IP(
+                src=src,
+                dst=dst,
+                id=ip_id,
+                proto=17,
+                frag=start // 8,
+                flags="MF" if more else 0,
+            )
+            / Raw(udp_bytes[start:end])
+        )
+
+    # Case 2: two consecutive arrivals overlap at bytes [64, 96).
+    data2 = bytes(UDP(sport=12000, dport=9000, chksum=0)
+                  / Raw(b"B" * 120))
+    add_fragment("198.51.100.10", "198.51.100.20",
+                 2000, data2, 0, 96, True)
+    add_fragment("198.51.100.10", "198.51.100.20",
+                 2000, data2, 64, 128, False)
+
+    # Case 3: C overlaps A, but not the immediately preceding B.
+    data3 = bytes(UDP(sport=12000, dport=9000, chksum=0)
+                  / Raw(b"C" * 216))
+    add_fragment("203.0.113.10", "203.0.113.20",
+                 3000, data3, 0, 96, True)      # A
+    add_fragment("203.0.113.10", "203.0.113.20",
+                 3000, data3, 96, 192, True)    # B
+    add_fragment("203.0.113.10", "203.0.113.20",
+                 3000, data3, 64, 96, True)     # C
+    add_fragment("203.0.113.10", "203.0.113.20",
+                 3000, data3, 192, 224, False)  # Final fragment
+
+    wrpcap("detector_three_cases.pcap", packets)
+    print("Created detector_three_cases.pcap")
+
+Test case details (the IPv4 protocol is 17, UDP, in each case):
+
+* Normal: ID 1000, 192.0.2.10 to 192.0.2.20; offset 0, unfragmented; no alert expected.
+* Consecutive: ID 2000, 198.51.100.10 to 198.51.100.20; offset 0 gives [0,96), offset 8 gives [64,128); V1 and V2 should alert.
+* Nonconsecutive: ID 3000, 203.0.113.10 to 203.0.113.20; offsets 0, 12, 8, and 24 give [0,96), [96,192), [64,96), and [192,224); V2 should find the A/C overlap.
+
+All start values passed to add_fragment() are multiples of eight, as required for the fragment offset calculation. This PCAP is generated on disk by the script; it sends no network traffic.
+
+
+ADDITIONAL QUESTIONS AND OUTPUTS
+
+7. CPU USE AND PROCESSING TIME
+
+Prompt: "Give me functions for CPU usage and average processing time per packet. Are there other metrics that show the detector is slowing down?"
+
+Output: Measure the time spent processing each packet separately from CPU use over the whole run. Put this small class above main(), then create one instance beside the detector. It retains only a recent sample of times, so measuring a long run does not create an unlimited list.
+
+    import time
+    from collections import deque
+
+    class PerformanceStats:
+        def __init__(self):
+            self.packet_count = 0
+            self.total_seconds = 0.0
+            self.recent_seconds = deque(maxlen=5000)
+            self.wall_start = time.perf_counter()
+            self.cpu_start = time.process_time()
+
+        def process(self, detector, packet):
+            start = time.perf_counter()
+            detector.process_packet(packet)
+            elapsed = time.perf_counter() - start
+
+            self.packet_count += 1
+            self.total_seconds += elapsed
+            self.recent_seconds.append(elapsed)
+
+        def summary(self):
+            wall_seconds = time.perf_counter() - self.wall_start
+            cpu_seconds = time.process_time() - self.cpu_start
+
+            average_ms = (
+                self.total_seconds / self.packet_count * 1000
+                if self.packet_count else 0
+            )
+            cpu_percent = (
+                cpu_seconds / wall_seconds * 100
+                if wall_seconds else 0
+            )
+
+            times = sorted(self.recent_seconds)
+            p95_ms = (
+                times[int(0.95 * (len(times) - 1))] * 1000
+                if times else 0
+            )
+
+            return average_ms, p95_ms, cpu_percent
+
+In main(), use stats = PerformanceStats(), then call stats.process(detector, packet) in place of detector.process_packet(packet). Print stats.summary() when the run ends.
+
+average_ms is the mean processing time, and p95_ms shows whether slower individual packets are being hidden by that mean. cpu_percent compares this process's CPU time with elapsed time over the run; it is not total computer CPU usage. Also record packets processed per second, current datagram count, current fragment count, and removed datagrams. Plotting those alongside processing time makes a slowdown easier to explain.
+
+
+8. FRAGMENT EXPIRY
+
+Prompt: "How do I set a fragment's expiry time?"
+
+Output: Expire the datagram entry that holds fragments, because all its stored fragments share a key. For a live detector, record when the entry was last updated with time.monotonic(). Put the expiry method in the Version 2 detector class:
+
+    import time
+
+    def expire_old_datagrams(self, now):
+        expired_keys = [
+            key for key, entry in self.fragment_table.items()
+            if now - entry["last_seen"] > self.timeout_seconds
+        ]
+
+        for key in expired_keys:
+            del self.fragment_table[key]
+            self.expired_datagrams += 1
+
+In the constructor, initialize self.timeout_seconds and self.expired_datagrams. When creating an entry, give it {"fragments": [], "last_seen": now}; update last_seen whenever another fragment for that key arrives. Call expire_old_datagrams(now) periodically before looking up the new fragment.
+
+For live traffic, now = time.monotonic(). For an offline PCAP, using float(packet.time) instead lets the expiry decision follow capture time. Use the same kind of timestamp for both now and last_seen; mixing the two clocks gives incorrect expiry. A timeout is a setting to explain and test, not a universal constant for this detector.
+
+
+9. LIMITS ON STORED DATAGRAMS AND FRAGMENTS
+
+Prompt: "I want to flush fragments once the dictionary reaches a certain size. What is the ultimate number? Does complexity change after a certain number?"
+
+Output: There is no magic number where complexity changes. If each new fragment is compared with all k fragments already stored for its datagram, that arrival takes O(k) comparison work. The total comparisons for many arrivals to the same datagram can grow approximately as O(k^2). Limits stop that work and memory use from growing without bound; choose their values from measurements of your expected traffic and lab tests.
+
+Add configurable limits to the constructor. Before creating a new datagram entry, expire old entries. If the table is still full, remove the oldest entry. Before appending a fragment to an existing entry, check its fragment limit:
+
+    # Example settings in __init__; tune them using measurements.
+    self.max_datagrams = 1000
+    self.max_fragments_per_datagram = 64
+    self.removed_datagrams = 0
+
+    def remove_oldest_datagram(self):
+        oldest_key = min(
+            self.fragment_table,
+            key=lambda key: self.fragment_table[key]["last_seen"],
+        )
+        del self.fragment_table[oldest_key]
+        self.removed_datagrams += 1
+
+Use the checks where process_packet() is about to create or extend an entry:
+
+    if key not in self.fragment_table:
+        if len(self.fragment_table) >= self.max_datagrams:
+            self.remove_oldest_datagram()
+
+        self.fragment_table[key] = {
+            "fragments": [],
+            "last_seen": now,
+        }
+
+    entry = self.fragment_table[key]
+
+    if len(entry["fragments"]) >= self.max_fragments_per_datagram:
+        del self.fragment_table[key]
+        self.removed_datagrams += 1
+        return
+
+    entry["fragments"].append(fragment_info)
+    entry["last_seen"] = now
+
+1000 and 64 here are example test settings, not numbers required by IPv4 or a point where complexity changes. Also note that finding the oldest key with min(...) scans the datagram table, so do it only when a new entry needs room, rather than for every incoming fragment.
+
+
+10. WRITING MAIN() FOR VERSION 2
+
+Prompt: "How do I write main() for detector Version 2?"
+
+Output: Follow Version 1's input structure so the versions can be tested against the same PCAP. Version 2's constructor also receives its resource settings. Pass a consistent time value into its processing method so expiry works for either input. This example assumes you name that argument now:
+
+    import argparse
+    import time
+    from scapy.all import PcapReader, sniff
+
+    def main():
+        parser = argparse.ArgumentParser()
+        source = parser.add_mutually_exclusive_group(required=True)
+        source.add_argument("--pcap")
+        source.add_argument("--interface")
+        args = parser.parse_args()
+
+        detector = OverlapDetectorV2(
+            timeout_seconds=30,
+            max_datagrams=1000,
+            max_fragments_per_datagram=64,
+        )
+
+        if args.pcap:
+            with PcapReader(args.pcap) as packets:
+                for packet in packets:
+                    detector.process_packet(packet, now=float(packet.time))
+        else:
+            sniff(
+                iface=args.interface,
+                prn=lambda packet: detector.process_packet(
+                    packet, now=time.monotonic()
+                ),
+                store=False,
+            )
+
+        print("Fragments processed:", detector.fragments_processed)
+        print("Overlaps detected:", detector.overlaps_detected)
+        print("Expired datagrams:", detector.expired_datagrams)
+        print("Removed datagrams:", detector.removed_datagrams)
+
+    if __name__ == "__main__":
+        main()
+
+Put this after the Version 2 class and adjust the class name or counter names to match your file. The timeout and two limits are experiment settings; use the same values when comparing runs.
+
+
+11. A DEBUGGING QUESTION
+
+Prompt: "The detector reports an overlap, but the ranges I expected do not overlap. How can I find which calculation is wrong?"
+
+Output: Print the values before the overlap decision. Put a temporary diagnostic line after calculating the current fragment's range:
+
+    print(
+        "key=", key,
+        "offset=", int(ip.frag),
+        "MF=", int(ip.flags.MF),
+        "IP length=", int(ip.len),
+        "header bytes=", int(ip.ihl) * 4,
+        "range=", (start_byte, end_byte),
+    )
+
+Then compare the same details for the stored fragment. If its timestamp is much older, inspect expiry or IP ID reuse. If the end byte is larger than IP length - header bytes allows, inspect the payload calculation. If both ranges are correct, check the strict < in the overlap condition: ranges that meet at one endpoint do not overlap. Remove the temporary prints once the cause is identified.
+
+
+12. PUSHING ONLY THE INTENDED FILES TO GIT
+
+Prompt: "My files are messy. What commands push only my Version 1 and Version 2 work?"
+
+Output: First check your branch and the working tree. Stage your specific Version 1 files and then the Version 2 folder. Inspect the staged list before committing; this matters if Version 2 contains captures or temporary files.
+
+    git branch --show-current
+    git status --short
+
+    git add -- "Version 1/weak_overlap_detector_v1.py"
+    git add -- "Version 1/requirements.txt"
+    git add -- "Version 2"
+
+    git diff --cached --name-only
+
+If the staged list includes an unwanted file, unstage that path:
+
+    git restore --staged -- "Version 2/path/to/unwanted_file"
+    git diff --cached --name-only
+
+When the list contains exactly what you intend:
+
+    git commit -m "Add detector updates"
+    git push -u origin HEAD
+
+These commands leave untracked messy files on your PC alone. They also do not remove files already tracked in Git: "commit only my detector files" and "make the entire remote repository contain only two folders" are different operations. Do not stage your teammate's attacker file unless you intentionally changed it.
